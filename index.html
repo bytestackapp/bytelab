@@ -79,9 +79,12 @@ let meeting=false,busyAll=false;
 const KEY='office_key';
 function getKey(force){let k='';try{k=force?'':localStorage.getItem(KEY)||''}catch(e){}
  if(!k){k=prompt('Enter your office password')||'';try{localStorage.setItem(KEY,k)}catch(e){}}return k}
+// spaces out requests so free-tier rate limits are not hit (raise GAP if you see rate-limit errors)
+const GAP=4000;let gate=Promise.resolve();
+function slot(){const p=gate.then(()=>new Promise(r=>setTimeout(r,GAP)));gate=p;return p}
 async function ask(prompt,agent){
  if(window.claude){const sm=await claude.use('sample').catch(()=>null);if(sm)return (await sm(prompt,{cache:false,modelTier:'quick'})).text}
- const r=await fetch('/api/ai',{method:'POST',headers:{'content-type':'application/json','x-office-key':getKey()},body:JSON.stringify({prompt,agent})});
+ await slot();const r=await fetch('/api/ai',{method:'POST',headers:{'content-type':'application/json','x-office-key':getKey()},body:JSON.stringify({prompt,agent})});
  if(r.status===401){getKey(true);throw new Error('Wrong password, try again')}
  const j=await r.json().catch(()=>({}));if(!r.ok)throw new Error(j.error||'Request failed ('+r.status+')');return j.text}
 async function askJson(prompt){const t=await ask(prompt,'Ava');const a=t.indexOf('{'),b=t.lastIndexOf('}');return JSON.parse(t.slice(a,b+1))}
