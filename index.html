@@ -20,11 +20,15 @@ h1{font-size:16px;font-weight:600;margin:0;background:var(--panel);padding:8px 1
 button,input{font:inherit;font-size:14px;color:var(--ink);background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:8px 12px}
 button{cursor:pointer}button.on{background:#8fae8a;color:#1d2a30;border-color:#8fae8a}
 button:focus-visible,input:focus-visible{outline:2px solid #8fae8a;outline-offset:2px}
-.hint{position:fixed;left:0;right:0;bottom:calc(env(safe-area-inset-bottom,0px) + 160px);text-align:center;font-size:12px;color:var(--mute);pointer-events:none}
-.task{position:fixed;left:12px;right:12px;bottom:calc(env(safe-area-inset-bottom,0px) + 114px);display:none;gap:6px}
-.task input{flex:1;min-width:0}
-.dock{position:fixed;left:0;right:0;bottom:0;padding:10px 12px calc(env(safe-area-inset-bottom,0px) + 10px);display:flex;gap:8px;overflow-x:auto}
-.card{flex:0 0 150px;text-align:left;padding:9px 11px;border-radius:14px}
+.card{display:block;width:100%;text-align:left;padding:8px 10px;border-radius:12px}
+#menu{position:fixed;right:12px;top:calc(env(safe-area-inset-top,0px) + 58px);width:min(340px,calc(100vw - 24px));max-height:calc(100vh - 90px);max-height:calc(100dvh - 90px);overflow:auto;background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:2px 12px;box-shadow:0 8px 28px rgba(0,0,0,.18)}
+#menu[hidden]{display:none}
+details{border-bottom:1px solid var(--line)}details:last-of-type{border:0}
+summary{padding:11px 2px;font-weight:600;cursor:pointer}
+.grp{display:flex;flex-direction:column;gap:6px;padding:0 0 12px}
+.grp input{width:100%;box-sizing:border-box}
+.note{font-size:12px;color:var(--mute);margin:0}
+#menuBtn{display:flex;align-items:center;gap:8px}
 .card.sel{border-color:#8fae8a;box-shadow:0 0 0 2px #8fae8a88}
 .nm{display:flex;align-items:center;gap:6px;font-weight:600;font-size:14px}
 .rl{font-size:12px;color:var(--mute)}.st{font-size:12px;margin-top:4px;min-height:30px}
@@ -37,11 +41,15 @@ button:focus-visible,input:focus-visible{outline:2px solid #8fae8a;outline-offse
 </head>
 <body>
 <div id="stage"></div>
-<div class="top"><h1>Bytestack Office</h1><div class="btns"><button id="mb">Meeting</button><button id="lb">Log</button><button id="rb">Reset</button></div></div>
-<div class="hint">Drag to orbit. W A S D to walk. Scroll or pinch to zoom. Tap a name to inspect.</div>
+<div class="top"><h1>Bytestack Office</h1><button id="menuBtn" aria-expanded="false" aria-controls="menu"><svg width="16" height="12" viewBox="0 0 16 12" aria-hidden="true"><path d="M0 1h16M0 6h16M0 11h16" stroke="currentColor" stroke-width="2" fill="none"/></svg>Menu</button></div>
+<div id="menu" hidden>
+<details name="m" open><summary>Assign work</summary><div class="grp"><input id="tin" placeholder="Give the Manager an objective" maxlength="240"><button id="go">Assign</button></div></details>
+<details name="m"><summary>Team</summary><div class="grp" id="team"></div></details>
+<details name="m"><summary>Animation</summary><div class="grp"><button id="mb">Start team meeting</button><button data-act="coffee">Coffee break</button><button data-act="pool">Play pool</button><button data-act="snack">Snack time</button><button data-act="relax">Relax on the sofa</button><button class="on" data-act="roam">Free roam</button><p class="note">Breaks apply to agents who are not working. A meeting can start once the current task finishes.</p></div></details>
+<details name="m"><summary>Activity</summary><div class="grp"><button id="lb">Open activity log</button></div></details>
+<details name="m"><summary>View</summary><div class="grp"><button id="rb">Reset camera</button></div></details>
+</div>
 <div id="res"><h2 id="rt"></h2><p id="rp"></p><button id="rc">Close</button></div>
-<div class="task" id="task"><input id="tin" placeholder="Give the Manager an objective" maxlength="240"><button id="go">Assign</button></div>
-<div class="dock" id="dock"></div>
 <script>
 // ===== 1. Event bus and agent state (the source of truth; the 3D scene only reads this) =====
 const bus={L:[],h:[],on(f){this.h.push(f)},emit(type,agent,detail){const e={t:Date.now(),type,agent,detail:detail||''};this.L.push(e);if(this.L.length>200)this.L.shift();this.h.forEach(f=>f(e))}};
@@ -67,12 +75,17 @@ const LEIS={coffee:{t:'coffee break',o:'PANTRY',s:Array.from({length:10},(_,k)=>
  dining:{t:'having a snack',o:'DINING',sit:1,s:[1.8,3,4.2].flatMap(x=>[[x,9.9,0],[x,12.1,Math.PI]])},
  rest:{t:'resting',o:'REST_AREA',sit:1,s:[[8.6,9,-Math.PI/2],[8.6,10.8,-Math.PI/2],[8.6,12.6,-Math.PI/2]]},
  chat:{t:'chatting',o:'LOUNGE',s:Array.from({length:10},(_,k)=>[-7.5+Math.cos(k/10*6.283)*2.3,10+Math.sin(k/10*6.283)*2.1,'c'])}};
-const occ={};
-function pick(o){const ks=Object.keys(LEIS).filter(k=>k!==o.act),k=ks[Math.floor(Math.random()*ks.length)];
- const free=LEIS[k].s.map((_,j)=>j).filter(j=>(!occ[k+j]||occ[k+j]===o.n)&&!(k==='coffee'&&ag[j]&&WANT[ag[j].work]==='pantry'));
- if(!free.length){o.actT=4;return}
- if(o.slotKey)occ[o.slotKey]=null;
- const j=free[Math.floor(Math.random()*free.length)];o.act=k;o.slot=j;o.slotKey=k+j;occ[o.slotKey]=o.n;o.actT=9+Math.random()*9}
+const occ={};let forced=null;
+function pick(o){
+ if(forced&&forced.includes(o.act)){o.actT=9+Math.random()*9;return}
+ const sh=a=>a.slice().sort(()=>Math.random()-.5),all=Object.keys(LEIS).filter(k=>k!==o.act);
+ const ks=forced?[...sh(forced),...sh(all.filter(k=>!forced.includes(k)))]:sh(all);
+ for(const k of ks){
+  const free=LEIS[k].s.map((_,j)=>j).filter(j=>(!occ[k+j]||occ[k+j]===o.n)&&!(k==='coffee'&&ag[j]&&WANT[ag[j].work]==='pantry'));
+  if(!free.length)continue;
+  if(o.slotKey)occ[o.slotKey]=null;
+  const j=free[Math.floor(Math.random()*free.length)];o.act=k;o.slot=j;o.slotKey=k+j;occ[o.slotKey]=o.n;o.actT=9+Math.random()*9;return}
+ o.actT=4}
 function setWork(o,w,task){const p=o.work;o.work=w;if(task!==undefined)o.task=task;o.since=Date.now();if(p!==w)bus.emit('agent.work_state',o.n,p+' to '+w)}
 // ===== 2. Orchestration: real Claude calls drive the state above =====
 let meeting=false,busyAll=false;
@@ -96,7 +109,7 @@ async function work(o,task,ctx){
  o.job=false;setTimeout(()=>{if(!o.job&&(o.work==='COMPLETED'||o.work==='BLOCKED'))setWork(o,'IDLE',null)},4000);
  return o.res}
 async function submit(){
- const g=tin.value.trim();if(!g||busyAll||meeting)return;tin.value='';busyAll=true;
+ const g=tin.value.trim();if(!g)return;closeMenu();if(meeting||busyAll){showRes('Assign work',meeting?'End the team meeting first.':'The team is already working on an objective.');return}tin.value='';busyAll=true;
  const m=ag[0];setWork(m,'THINKING','Planning: '+g.slice(0,50));m.job=true;m.res=null;bus.emit('agent.task_assigned','Ava',g);
  let plan;
  try{plan=await askJson('You are Ava, AI Operations Manager of Bytestack, a reusable AI company. Owner objective: '+g+'\nSpecialists: Rex (Researcher), Pia (Product Analyst), Arlo (Architect), Kit (Developer), Dax (Data), Quinn (QA), Sera (Security), Uma (UI/UX), Hana (HR). Pick only those needed, max 5. Return JSON only: {"tasks":[{"agent":"Name","task":"one sentence"}]}')}
@@ -117,11 +130,21 @@ const fmt=e=>new Date(e.t).toLocaleTimeString([],{hour:'2-digit',minute:'2-digit
 const dur=ms=>ms<6e4?Math.round(ms/1e3)+'s':Math.round(ms/6e4)+' min';
 function inspect(o){const rec=bus.L.filter(e=>e.agent===o.n).slice(-4).reverse().map(fmt).join('\n')||'None yet';
  showRes(o.n+', '+o.role,'Task: '+(o.task||'none')+'\nWork state: '+o.work+'\nOffice state: '+o.office+'\nIn this state for: '+dur(Date.now()-o.since)+'\n\nRecent activity\n'+rec+(o.res?'\n\nLatest result\n'+o.res:''))}
-document.getElementById('lb').onclick=()=>showRes('Activity log',bus.L.slice(-30).reverse().map(fmt).join('\n')||'No activity yet');
-document.getElementById('mb').onclick=function(){if(!meeting&&busyAll)return;meeting=!meeting;this.classList.toggle('on',meeting);
- ag.forEach(o=>setWork(o,meeting?'IN_MEETING':'IDLE',meeting?'Team meeting':null));bus.emit(meeting?'agent.entered_meeting':'agent.left_meeting','All')};
+document.getElementById('lb').onclick=()=>{closeMenu();showRes('Activity log',bus.L.slice(-30).reverse().map(fmt).join('\n')||'No activity yet')};
+const mb=document.getElementById('mb'),menu=document.getElementById('menu'),menuBtn=document.getElementById('menuBtn');
+function closeMenu(){menu.hidden=true;menuBtn.setAttribute('aria-expanded','false')}
+menuBtn.onclick=()=>{const open=menu.hidden;menu.hidden=!open;menuBtn.setAttribute('aria-expanded',String(open))};
+addEventListener('keydown',e=>{if(e.key==='Escape')closeMenu()});
+const busyMsg=t=>{closeMenu();showRes(t,'The team is working on an objective. Try again when it finishes.')};
+function setMeet(on){meeting=on;mb.classList.toggle('on',on);mb.textContent=on?'End team meeting':'Start team meeting';
+ ag.forEach(o=>setWork(o,on?'IN_MEETING':'IDLE',on?'Team meeting':null));bus.emit(on?'agent.entered_meeting':'agent.left_meeting','All')}
+mb.onclick=()=>{if(!meeting&&busyAll)return busyMsg('Team meeting');setMeet(!meeting);closeMenu()};
+const ACTS={coffee:['coffee'],pool:['pool'],snack:['dining'],relax:['sofa','rest'],roam:null};
+document.querySelectorAll('[data-act]').forEach(b=>b.onclick=()=>{forced=ACTS[b.dataset.act];
+ document.querySelectorAll('[data-act]').forEach(x=>x.classList.toggle('on',x===b));
+ if(meeting)setMeet(false);ag.forEach(o=>{if(o.work==='IDLE')o.actT=0});closeMenu()});
 document.getElementById('go').onclick=submit;tin.addEventListener('keydown',e=>{if(e.key==='Enter')submit()});
-document.getElementById('task').style.display='flex';
+
 // ===== 4. 3D scene: Warm Contemporary cutaway (visualization only) =====
 const dark=matchMedia('(prefers-color-scheme: dark)').matches;
 const scene=new THREE.Scene();scene.background=new THREE.Color(dark?0x1c1a17:0xefe7d8);
@@ -181,19 +204,19 @@ function mk(c){const g=new THREE.Group(),inn=new THREE.Group();g.add(inn);
  const legs=[-1,1].map(s=>{const l=new THREE.Mesh(new THREE.BoxGeometry(.16,.55,.16),M(0x33444b));l.position.set(s*.12,.3,0);inn.add(l);return l});
  const arms=[-1,1].map(s=>{const m=new THREE.Mesh(new THREE.BoxGeometry(.12,.12,.5),M(c));m.position.set(s*.34,1.1,.28);inn.add(m);return m});
  [body,head,...legs,...arms].forEach(m=>m.castShadow=true);inn.add(body,head);const cue=new THREE.Mesh(new THREE.BoxGeometry(.04,.04,1.5),M(0xb88a58));cue.position.set(.2,1.1,.85);cue.visible=false;inn.add(cue);scene.add(g);return {g,inn,head,legs,arms,cue}}
-const dock=document.getElementById('dock');let focus=null;
+const dock=document.getElementById('team');let focus=null;
 const tagEl=(cls,h)=>{const d=document.createElement('div');d.className=cls;d.innerHTML=h;document.body.appendChild(d);return d};
 ag.forEach(o=>{Object.assign(o,mk(R[o.i][2]));const p=spot('lounge',o.i);o.g.position.set(p[0],0,p[1]);
  o.tag=tagEl('tag','');o.tag.onclick=()=>inspect(o);
  o.card=document.createElement('button');o.card.className='card';
  o.card.innerHTML='<div class="nm"><span class="dot"></span>'+o.n+'</div><div class="rl">'+o.role+'</div><div class="st"></div>';
- o.card.onclick=()=>{focus=o.i;ag.forEach(a=>a.card.classList.toggle('sel',a===o));inspect(o)};dock.appendChild(o.card)});
+ o.card.onclick=()=>{closeMenu();focus=o.i;ag.forEach(a=>a.card.classList.toggle('sel',a===o));inspect(o)};dock.appendChild(o.card)});
 const zones=Object.values(RM).map(m=>({el:tagEl('tag zone',m.n),p:new THREE.Vector3(m.cx,2.1,m.z0+.6)}));
 // camera: orbit with drag, walk with WASD
 const V={az:.55,el:.9,r:44,tx:1,ty:.5,tz:0},G={r:44,tx:1,tz:0},ptr=new Map(),keys={};
 const clampR=r=>Math.max(10,Math.min(62,r));
 const stage=document.getElementById('stage');
-stage.addEventListener('pointerdown',e=>{ptr.set(e.pointerId,e);stage.setPointerCapture(e.pointerId)});
+stage.addEventListener('pointerdown',e=>{closeMenu();ptr.set(e.pointerId,e);stage.setPointerCapture(e.pointerId)});
 ['pointerup','pointercancel'].forEach(n=>stage.addEventListener(n,e=>ptr.delete(e.pointerId)));
 stage.addEventListener('pointermove',e=>{const p=ptr.get(e.pointerId);if(!p)return;
  if(ptr.size===1){V.az-=(e.clientX-p.clientX)*.006;V.el=Math.max(.25,Math.min(1.4,V.el+(e.clientY-p.clientY)*.006))}
@@ -202,7 +225,7 @@ stage.addEventListener('pointermove',e=>{const p=ptr.get(e.pointerId);if(!p)retu
 stage.addEventListener('wheel',e=>{e.preventDefault();G.r=clampR(G.r*(1+e.deltaY*.001))},{passive:false});
 addEventListener('keydown',e=>{if(document.activeElement.tagName!=='INPUT')keys[e.key.toLowerCase()]=1});
 addEventListener('keyup',e=>{keys[e.key.toLowerCase()]=0});
-document.getElementById('rb').onclick=()=>{focus=null;ag.forEach(a=>a.card.classList.remove('sel'));Object.assign(G,{r:44,tx:1,tz:0})};
+document.getElementById('rb').onclick=()=>{closeMenu();focus=null;ag.forEach(a=>a.card.classList.remove('sel'));Object.assign(G,{r:44,tx:1,tz:0})};
 function size(){ren.setSize(innerWidth,innerHeight);cam.aspect=innerWidth/innerHeight;cam.updateProjectionMatrix()}
 addEventListener('resize',size);size();
 // character behavior is derived from agent state
